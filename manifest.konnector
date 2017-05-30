@@ -3,7 +3,6 @@
   "name": "Numéricable",
   "type": "node",
   "slug": "numericable",
-  "description": "Get all the bills from numericable",
   "source": "git://github.com/cozy/cozy-konnector-numericable.git",
   "fields": {
     "save_folder": {
