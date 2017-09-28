@@ -74033,14 +74033,7 @@ module.exports = baseKonnector.createNew({
     parsePage,
     customFilterExisting,
     customSaveDataAndFile,
-    linkBankOperation({
-      log: log,
-      minDateDelta: 1,
-      maxDateDelta: 1,
-      model: Bill,
-      amountDelta: 0.1,
-      identifiers: ['numericable']
-    })
+    customLinkBankOperation
   ]
 })
 
@@ -74244,6 +74237,17 @@ function customFilterExisting (requiredFields, entries, data, next) {
 function customSaveDataAndFile (requiredFields, entries, data, next) {
   saveDataAndFile(null, Bill, fileOptions, ['bill'])(
       requiredFields, entries, data, next)
+}
+
+function customLinkBankOperation (requiredFields, entries, data, next) {
+  linkBankOperation(entries.fetched, '', {
+    minDateDelta: 1,
+    maxDateDelta: 1,
+    amountDelta: 0.1,
+    identifiers: ['numericable']
+  })
+  .then(() => next(null, entries.fetched))
+  .catch(err => next(err))
 }
 
 
