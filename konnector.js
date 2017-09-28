@@ -40,7 +40,7 @@ module.exports = baseKonnector.createNew({
       maxDateDelta: 1,
       model: Bill,
       amountDelta: 0.1,
-      identifier: ['numericable']
+      identifiers: ['numericable']
     })
   ]
 })
