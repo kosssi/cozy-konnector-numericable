@@ -74105,6 +74105,7 @@ function login (requiredFields, entries, data, next) {
     }
 
     if (!appKey) {
+      log('error', 'LOGIN_FAILED')
       log('error', 'Numericable: could not retrieve app key')
       return next('LOGIN_FAILED')
     }
@@ -74130,6 +74131,7 @@ function login (requiredFields, entries, data, next) {
         }
 
         if (err) {
+          log('error', 'LOGIN_FAILED')
           log('error', 'Signin failed')
           return next('LOGIN_FAILED')
         }
