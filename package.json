@@ -17,11 +17,8 @@
     "request-json": "^0.6.2"
   },
   "scripts": {
-    "start": "node --expose-gc index.js",
-    "oauth": "env-cmd ./data/env.js cozy-authenticate manifest.konnector",
-    "predev": "npm run oauth && env-cmd ./data/env.js cozy-init-dev-account ./data/account.txt ./data/env_fields.json",
-    "dev": "env-cmd ./data/env_development.js npm start",
-    "standalone": "env-cmd ./data/env_standalone.js npm start",
+    "dev": "cozy-konnector-dev",
+    "standalone": "cozy-konnector-standalone",
     "build": "webpack",
     "lint": "standard --fix konnector.js",
     "deploy": "git-directory-deploy --username Cozy --email contact@cozycloud.cc --directory build/ --repo=https://$GITHUB_TOKEN@github.com/cozy/cozy-konnector-numericable.git"
