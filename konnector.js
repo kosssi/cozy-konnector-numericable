@@ -123,7 +123,7 @@ function fetchPage () {
 }
 
 function buildBillFileName (momentBillDate) {
-  return `Numericalble-${momentBillDate.format('YYYY-MM-DD')}.pdf`
+  return `Numericable-${momentBillDate.format('YYYY-MM-DD')}.pdf`
 }
 
 // Layer to parse the fetched page to extract bill data.
