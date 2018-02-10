@@ -10,11 +10,11 @@
   "author": "",
   "license": "AGPL-3.0",
   "dependencies": {
-    "cheerio": "0.19",
-    "cozy-konnector-libs": "^3.0.8",
-    "node-polyglot": "^2.2.2",
-    "request": "^2.81.0",
-    "request-json": "^0.6.2"
+    "cheerio": "0.19.0",
+    "cozy-konnector-libs": "3.0.8",
+    "node-polyglot": "2.2.2",
+    "request": "2.81.0",
+    "request-json": "0.6.2"
   },
   "scripts": {
     "dev": "cozy-konnector-dev",
@@ -24,13 +24,13 @@
     "deploy": "git-directory-deploy --username Cozy --email contact@cozycloud.cc --directory build/ --repo=https://$GITHUB_TOKEN@github.com/cozy/cozy-konnector-numericable.git"
   },
   "devDependencies": {
-    "copy-webpack-plugin": "^4.0.1",
-    "cz-conventional-changelog": "^2.0.0",
-    "env-cmd": "^5.1.0",
-    "git-directory-deploy": "^1.5.1",
-    "request-debug": "^0.2.0",
-    "standard": "^10.0.2",
-    "webpack": "^2.5.1"
+    "copy-webpack-plugin": "4.0.1",
+    "cz-conventional-changelog": "2.0.0",
+    "env-cmd": "5.1.0",
+    "git-directory-deploy": "1.5.1",
+    "request-debug": "0.2.0",
+    "standard": "10.0.2",
+    "webpack": "2.6.1"
   },
   "config": {
     "commitizen": {
