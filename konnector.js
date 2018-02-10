@@ -1,254 +1,159 @@
 'use strict'
 
-const request = require('request')
 const cheerio = require('cheerio')
 const moment = require('moment')
 
 const {
     log,
-    baseKonnector,
-    filterExisting,
-    linkBankOperation,
-    saveDataAndFile,
-    models
+    BaseKonnector,
+    saveBills,
+    request
 } = require('cozy-konnector-libs')
-const Bill = models.bill
 
-module.exports = baseKonnector.createNew({
-  name: 'Numéricable',
-  description: 'konnector description numericable',
-  vendorLink: 'https://www.numericable.fr/',
-
-  category: 'isp',
-  color: {
-    hex: '#53BB0F',
-    css: '#53BB0F'
-  },
-
-  dataType: ['bill'],
-
-  models: [Bill],
-
-  fetchOperations: [
-    login,
-    parsePage,
-    customFilterExisting,
-    customSaveDataAndFile,
-    customLinkBankOperation
-  ]
+const rq = request({
+  cheerio: true,
+  jar: true,
+  json: false
 })
 
-const fileOptions = {
-  vendor: 'Numéricable',
-  dateFormat: 'YYYYMMDD'
+const accountUrl = 'https://moncompte.numericable.fr'
+const connectionUrl = 'https://connexion.numericable.fr'
+
+module.exports = new BaseKonnector(function fetch (params) {
+  return authenticate.call(this, params)
+    .then(synchronize.bind(this, params))
+})
+
+function authenticate (params) {
+  return fetchAppKey()
+    .then(appKey => fetchAccessToken(appKey, params))
+    .catch(handleErrorAndTerminate.bind(this, 'LOGIN_FAILED'))
+    .then(authenticateWithToken)
+    .catch(handleErrorAndTerminate.bind(this, 'UNKNOWN_ERROR'))
 }
 
-function login (requiredFields, entries, data, next) {
-  const accountUrl = 'https://moncompte.numericable.fr'
-  const connectionUrl = 'https://connexion.numericable.fr'
-  const appKeyOptions = {
-    method: 'GET',
-    jar: true,
-    url: `${accountUrl}/pages/connection/Login.aspx`
-  }
+function handleErrorAndTerminate (criticalErrorMessage, sourceError) {
+  log('error', sourceError.message)
+  return this.terminate(criticalErrorMessage)
+}
 
-  const logInOptions = {
+function fetchAppKey () {
+  log('info', 'Fetching app key')
+  return rq({
+    followRedirect: true,
+    method: 'GET',
+    url: `${accountUrl}/pages/connection/Login.aspx`
+  })
+    .then(scrapAppKey)
+}
+
+function scrapAppKey ($) {
+  const appKey = $('#PostForm input[name="appkey"]').attr('value')
+
+  if (!appKey) throw new Error('Numericable: could not retrieve app key')
+
+  return appKey
+}
+
+function fetchAccessToken (appKey, params) {
+  log('info', `Logging in with appKey ${appKey}`)
+  return rq({
+    followRedirect: true,
     method: 'POST',
     jar: true,
     url: `${connectionUrl}/Oauth/Oauth.php`,
     form: {
       action: 'connect',
       linkSSO: `${connectionUrl}/pages/connection/Login.aspx?link=HOME`,
-      appkey: '',
+      appkey: appKey,
       isMobile: ''
     }
-  }
-
-  const redirectOptions = {
-    method: 'POST',
-    jar: true,
-    url: connectionUrl
-  }
-
-  const signInOptions = {
+  }).then(() => rq({
+    followRedirect: true,
     method: 'POST',
     jar: true,
     url: `${connectionUrl}/Oauth/login/`,
     form: {
-      login: requiredFields.login,
-      pwd: requiredFields.password
+      login: params.login,
+      pwd: params.password
     }
-  }
+  })).then(scrapAccessToken)
+}
 
-  const tokenAuthOptions = {
+function scrapAccessToken ($) {
+  const accessToken = $('#accessToken').attr('value')
+
+  if (!accessToken) throw new Error('Token fetching failed')
+  return accessToken
+}
+
+function authenticateWithToken (accessToken) {
+  log('info', 'Authenticating by token')
+  return rq({
+    followRedirect: true,
     method: 'POST',
     jar: true,
     url: `${accountUrl}/pages/connection/Login.aspx?link=HOME`,
     qs: {
-      accessToken: ''
+      accessToken: accessToken
     }
-  }
+  })
+}
 
-  const billOptions = {
+function synchronize (params) {
+  return fetchPage()
+    .then(scrapBills)
+    .then(bills => saveBills(bills, params, {
+      minDateDelta: 1,
+      maxDateDelta: 1,
+      amountDelta: 0.1,
+      identifiers: ['numericable']
+    }))
+    .catch(handleErrorAndTerminate.bind(this, 'UNKNOWN_ERROR'))
+}
+
+function fetchPage () {
+  log('info', 'Fetching bills page')
+  return rq({
+    followRedirect: true,
     method: 'GET',
     jar: true,
-    uri: `${accountUrl}/pages/billing/Invoice.aspx`
-  }
-
-  log('info', 'Getting appkey')
-  request(appKeyOptions, (err, res, body) => {
-    let appKey = ''
-    let $
-
-    if (!err) {
-      $ = cheerio.load(body)
-      appKey = $('#PostForm input[name="appkey"]').attr('value')
-    }
-
-    if (!appKey) {
-      log('error', 'LOGIN_FAILED')
-      log('error', 'Numericable: could not retrieve app key')
-      return next('LOGIN_FAILED')
-    }
-
-    logInOptions.form.appkey = appKey
-
-    log('info', 'Logging in')
-    request(logInOptions, (err) => {
-      if (err) {
-        log('error', 'Login failed')
-        return next('LOGIN_FAILED')
-      }
-
-      log('info', 'Signing in')
-      request(signInOptions, (err, res) => {
-        let redirectUrl = ''
-        if (res && res.headers) {
-          redirectUrl = res.headers.location
-          // Numéricable returns a 302 even in case of errors
-          if (!redirectUrl || (redirectUrl === '/Oauth/connect/')) {
-            err = true
-          }
-        }
-
-        if (err) {
-          log('error', 'LOGIN_FAILED')
-          log('error', 'Signin failed')
-          return next('LOGIN_FAILED')
-        }
-
-        redirectOptions.url += redirectUrl
-
-        log('info', 'Fetching access token')
-        request(redirectOptions, (err, res, body) => {
-          let accessToken = ''
-
-          if (!err) {
-            $ = cheerio.load(body)
-            accessToken = $('#accessToken').attr('value')
-          }
-
-          if (!accessToken) {
-            log('error', 'Token fetching failed')
-            return next('UNKNOWN_ERROR')
-          }
-
-          tokenAuthOptions.qs.accessToken = accessToken
-
-          log('info', 'Authenticating by token')
-          request(tokenAuthOptions, (err) => {
-            if (err) {
-              log('error', 'Authentication by token failed')
-              return next('UNKNOWN_ERROR')
-            }
-
-            log('info', 'Fetching bills page')
-            request(billOptions, (err, res, body) => {
-              if (err) {
-                log('error', 'An error occured while fetching bills page')
-                return next('UNKNOWN_ERROR')
-              }
-
-              data.html = body
-              return next()
-            })
-          })
-        })
-      })
-    })
+    url: `${accountUrl}/pages/billing/Invoice.aspx`
   })
+}
+
+function buildBillFileName (momentBillDate) {
+  return `Numericable-${momentBillDate.format('YYYY-MM-DD')}.pdf`
 }
 
 // Layer to parse the fetched page to extract bill data.
-function parsePage (requiredFields, bills, data, next) {
-  bills.fetched = []
-  const $ = cheerio.load(data.html)
-  const baseURL = 'https://moncompte.numericable.fr'
-
+function scrapBills ($) {
   // Analyze bill listing table.
   log('info', 'Parsing bill page')
 
-  // First bill
-  const firstBill = $('#firstFact')
-  let billDate = firstBill.find('h2 span')
-  let billTotal = firstBill.find('p.right')
-  let billLink = firstBill.find('a.linkBtn')
-
-  let bill = {
-    date: moment(billDate.html(), 'DD/MM/YYYY'),
-    amount: parseFloat(billTotal.html().replace(' €', '').replace(',', '.')),
-    pdfurl: baseURL + billLink.attr('href')
-  }
-
-  if (bill.date && bill.amount && bill.pdfurl) {
-    bills.fetched.push(bill)
-  }
-
-  // Other bills
-  $('#facture > div[id!="firstFact"]').each((index, element) => {
-    billDate = $(element).find('h3')
+  const bills = $('#firstFact, #facture > div[id!="firstFact"]').map((index, element) => {
+    const $element = $(element)
+    const first = !index
+    const billDate = first ? $element.find('h2 span').text() : $element.find('h3')
               .html()
               .substr(3)
-    billTotal = $(element).find('p.right')
-    billLink = $(element).find('a.linkBtn')
+    const billTotal = $element.find('p.right')
+    const billLink = $element.find('a.linkBtn')
+    const momentBillDate = moment(billDate, 'DD/MM/YYYY')
 
     // Add a new bill information object.
-    bill = {
-      date: moment(billDate, 'DD/MM/YYYY'),
+    return {
+      date: momentBillDate.toDate(),
       amount: parseFloat(billTotal.html().replace(' €', '').replace(',', '.')),
-      pdfurl: baseURL + billLink.attr('href')
-    }
-
-    if (bill.date && bill.amount && bill.pdfurl) {
-      bills.fetched.push(bill)
+      filename: buildBillFileName(momentBillDate),
+      fileurl: accountUrl + billLink.attr('href'),
+      vendor: 'Numéricable'
     }
   })
+  .filter((index, bill) => bill.date && bill.amount && bill.fileurl)
+  .toArray()
 
-  log('info', `${bills.fetched.length} bill(s) retrieved`)
+  log('info', bills.length ? `${bills.length} bill(s) retrieved` : 'no bills retrieved')
 
-  if (!bills.fetched.length) {
-    return next('no bills retrieved')
-  }
-
-  next()
-}
-
-function customFilterExisting (requiredFields, entries, data, next) {
-  filterExisting(null, Bill)(requiredFields, entries, data, next)
-}
-
-function customSaveDataAndFile (requiredFields, entries, data, next) {
-  saveDataAndFile(null, Bill, fileOptions, ['bill'])(
-      requiredFields, entries, data, next)
-}
-
-function customLinkBankOperation (requiredFields, entries, data, next) {
-  linkBankOperation(entries.fetched, '', {
-    minDateDelta: 1,
-    maxDateDelta: 1,
-    amountDelta: 0.1,
-    identifiers: ['numericable']
-  })
-  .then(() => next(null, entries.fetched))
-  .catch(err => next(err))
+  return bills
 }
