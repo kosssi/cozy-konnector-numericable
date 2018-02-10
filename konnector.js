@@ -1,16 +1,15 @@
 'use strict'
 
-const cheerio = require('cheerio')
 const moment = require('moment')
 
 const {
     log,
     BaseKonnector,
     saveBills,
-    request
+    requestFactory
 } = require('cozy-konnector-libs')
 
-const rq = request({
+const request = requestFactory({
   cheerio: true,
   jar: true,
   json: false
@@ -39,7 +38,7 @@ function handleErrorAndTerminate (criticalErrorMessage, sourceError) {
 
 function fetchAppKey () {
   log('info', 'Fetching app key')
-  return rq({
+  return request({
     followRedirect: true,
     method: 'GET',
     url: `${accountUrl}/pages/connection/Login.aspx`
@@ -57,7 +56,7 @@ function scrapAppKey ($) {
 
 function fetchAccessToken (appKey, params) {
   log('info', `Logging in with appKey ${appKey}`)
-  return rq({
+  return request({
     followRedirect: true,
     method: 'POST',
     jar: true,
@@ -68,7 +67,7 @@ function fetchAccessToken (appKey, params) {
       appkey: appKey,
       isMobile: ''
     }
-  }).then(() => rq({
+  }).then(() => request({
     followRedirect: true,
     method: 'POST',
     jar: true,
@@ -89,7 +88,7 @@ function scrapAccessToken ($) {
 
 function authenticateWithToken (accessToken) {
   log('info', 'Authenticating by token')
-  return rq({
+  return request({
     followRedirect: true,
     method: 'POST',
     jar: true,
@@ -114,7 +113,7 @@ function synchronize (params) {
 
 function fetchPage () {
   log('info', 'Fetching bills page')
-  return rq({
+  return request({
     followRedirect: true,
     method: 'GET',
     jar: true,
