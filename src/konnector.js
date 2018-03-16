@@ -3,10 +3,10 @@
 const moment = require('moment')
 
 const {
-    log,
-    BaseKonnector,
-    saveBills,
-    requestFactory
+  log,
+  BaseKonnector,
+  saveBills,
+  requestFactory
 } = require('cozy-konnector-libs')
 
 const request = requestFactory({
@@ -18,12 +18,11 @@ const request = requestFactory({
 const accountUrl = 'https://moncompte.numericable.fr'
 const connectionUrl = 'https://connexion.numericable.fr'
 
-module.exports = new BaseKonnector(function fetch (params) {
-  return authenticate.call(this, params)
-    .then(synchronize.bind(this, params))
+module.exports = new BaseKonnector(function fetch(params) {
+  return authenticate.call(this, params).then(synchronize.bind(this, params))
 })
 
-function authenticate (params) {
+function authenticate(params) {
   return fetchAppKey()
     .then(appKey => fetchAccessToken(appKey, params))
     .catch(handleErrorAndTerminate.bind(this, 'LOGIN_FAILED'))
@@ -31,22 +30,21 @@ function authenticate (params) {
     .catch(handleErrorAndTerminate.bind(this, 'UNKNOWN_ERROR'))
 }
 
-function handleErrorAndTerminate (criticalErrorMessage, sourceError) {
+function handleErrorAndTerminate(criticalErrorMessage, sourceError) {
   log('error', sourceError.message)
   return this.terminate(criticalErrorMessage)
 }
 
-function fetchAppKey () {
+function fetchAppKey() {
   log('info', 'Fetching app key')
   return request({
     followRedirect: true,
     method: 'GET',
     url: `${accountUrl}/pages/connection/Login.aspx`
-  })
-    .then(scrapAppKey)
+  }).then(scrapAppKey)
 }
 
-function scrapAppKey ($) {
+function scrapAppKey($) {
   const appKey = $('#PostForm input[name="appkey"]').attr('value')
 
   if (!appKey) throw new Error('Numericable: could not retrieve app key')
@@ -54,7 +52,7 @@ function scrapAppKey ($) {
   return appKey
 }
 
-function fetchAccessToken (appKey, params) {
+function fetchAccessToken(appKey, params) {
   log('info', `Logging in with appKey ${appKey}`)
   return request({
     followRedirect: true,
@@ -67,26 +65,30 @@ function fetchAccessToken (appKey, params) {
       appkey: appKey,
       isMobile: ''
     }
-  }).then(() => request({
-    followRedirect: true,
-    method: 'POST',
-    jar: true,
-    url: `${connectionUrl}/Oauth/login/`,
-    form: {
-      login: params.login,
-      pwd: params.password
-    }
-  })).then(scrapAccessToken)
+  })
+    .then(() =>
+      request({
+        followRedirect: true,
+        method: 'POST',
+        jar: true,
+        url: `${connectionUrl}/Oauth/login/`,
+        form: {
+          login: params.login,
+          pwd: params.password
+        }
+      })
+    )
+    .then(scrapAccessToken)
 }
 
-function scrapAccessToken ($) {
+function scrapAccessToken($) {
   const accessToken = $('#accessToken').attr('value')
 
   if (!accessToken) throw new Error('Token fetching failed')
   return accessToken
 }
 
-function authenticateWithToken (accessToken) {
+function authenticateWithToken(accessToken) {
   log('info', 'Authenticating by token')
   return request({
     followRedirect: true,
@@ -99,19 +101,21 @@ function authenticateWithToken (accessToken) {
   })
 }
 
-function synchronize (params) {
+function synchronize(params) {
   return fetchPage()
     .then(scrapBills)
-    .then(bills => saveBills(bills, params, {
-      minDateDelta: 1,
-      maxDateDelta: 1,
-      amountDelta: 0.1,
-      identifiers: ['numericable']
-    }))
+    .then(bills =>
+      saveBills(bills, params, {
+        minDateDelta: 1,
+        maxDateDelta: 1,
+        amountDelta: 0.1,
+        identifiers: ['numericable']
+      })
+    )
     .catch(handleErrorAndTerminate.bind(this, 'UNKNOWN_ERROR'))
 }
 
-function fetchPage () {
+function fetchPage() {
   log('info', 'Fetching bills page')
   return request({
     followRedirect: true,
@@ -121,38 +125,50 @@ function fetchPage () {
   })
 }
 
-function buildBillFileName (momentBillDate) {
+function buildBillFileName(momentBillDate) {
   return `Numericable-${momentBillDate.format('YYYY-MM-DD')}.pdf`
 }
 
 // Layer to parse the fetched page to extract bill data.
-function scrapBills ($) {
+function scrapBills($) {
   // Analyze bill listing table.
   log('info', 'Parsing bill page')
 
-  const bills = $('#firstFact, #facture > div[id!="firstFact"]').map((index, element) => {
-    const $element = $(element)
-    const first = !index
-    const billDate = first ? $element.find('h2 span').text() : $element.find('h3')
-              .html()
-              .substr(3)
-    const billTotal = $element.find('p.right')
-    const billLink = $element.find('a.linkBtn')
-    const momentBillDate = moment(billDate, 'DD/MM/YYYY')
+  const bills = $('#firstFact, #facture > div[id!="firstFact"]')
+    .map((index, element) => {
+      const $element = $(element)
+      const first = !index
+      const billDate = first
+        ? $element.find('h2 span').text()
+        : $element
+            .find('h3')
+            .html()
+            .substr(3)
+      const billTotal = $element.find('p.right')
+      const billLink = $element.find('a.linkBtn')
+      const momentBillDate = moment(billDate, 'DD/MM/YYYY')
 
-    // Add a new bill information object.
-    return {
-      date: momentBillDate.toDate(),
-      amount: parseFloat(billTotal.html().replace(' €', '').replace(',', '.')),
-      filename: buildBillFileName(momentBillDate),
-      fileurl: accountUrl + billLink.attr('href'),
-      vendor: 'Numéricable'
-    }
-  })
-  .filter((index, bill) => bill.date && bill.amount && bill.fileurl)
-  .toArray()
+      // Add a new bill information object.
+      return {
+        date: momentBillDate.toDate(),
+        amount: parseFloat(
+          billTotal
+            .html()
+            .replace(' €', '')
+            .replace(',', '.')
+        ),
+        filename: buildBillFileName(momentBillDate),
+        fileurl: accountUrl + billLink.attr('href'),
+        vendor: 'Numéricable'
+      }
+    })
+    .filter((index, bill) => bill.date && bill.amount && bill.fileurl)
+    .toArray()
 
-  log('info', bills.length ? `${bills.length} bill(s) retrieved` : 'no bills retrieved')
+  log(
+    'info',
+    bills.length ? `${bills.length} bill(s) retrieved` : 'no bills retrieved'
+  )
 
   return bills
 }
